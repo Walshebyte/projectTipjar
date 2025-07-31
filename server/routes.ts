@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import { analyzeImage } from "./api/gemini";
+import { analyzeImage } from "./api/openai";
 import { extractPartnerHours, formatOCRResult } from "../client/src/lib/formatUtils";
 import { calculatePayout } from "../client/src/lib/utils";
 import { roundAndCalculateBills } from "../client/src/lib/billCalc";

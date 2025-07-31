@@ -4,7 +4,7 @@ import { setupVite, serveStatic, log } from "./vite";
 
 // Check for required environment variables in production
 if (process.env.NODE_ENV === "production") {
-  const requiredEnvVars = ["SESSION_SECRET", "GEMINI_API_KEY"];
+  const requiredEnvVars = ["SESSION_SECRET", "OPENAI_API_KEY"];
   const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
   
   if (missingEnvVars.length > 0) {

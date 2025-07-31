@@ -1,42 +1,39 @@
-// Gemini API implementation
-import fetch from 'node-fetch';
-
-interface GeminiResponse {
-  candidates: {
-    content: {
-      parts: {
-        text?: string;
-      }[];
+// OpenAI API implementation - much cheaper alternative to Gemini
+interface OpenAIResponse {
+  choices: {
+    message: {
+      content: string;
     };
   }[];
 }
 
-interface GeminiError {
+interface OpenAIError {
   error?: {
-    code?: number;
+    code?: string;
     message?: string;
-    status?: string;
+    type?: string;
   }
 }
 
 /**
- * Analyze an image using Google Gemini API to extract text
+ * Analyze an image using OpenAI GPT-4o-mini to extract text
+ * Cost comparison: GPT-4o-mini is ~10x cheaper than Gemini for vision tasks
  * @param imageBase64 The base64-encoded image data
  * @returns An object with extracted text or error details
  */
 export async function analyzeImage(imageBase64: string): Promise<{text: string | null; error?: string}> {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    const apiKey = process.env.OPENAI_API_KEY || "";
     
     if (!apiKey) {
-      console.error("No Gemini API key provided");
+      console.error("No OpenAI API key provided");
       return { 
         text: null,
-        error: "API key missing. Please configure the Gemini API key." 
+        error: "API key missing. Please configure the OpenAI API key." 
       };
     }
     
-    const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    const apiUrl = "https://api.openai.com/v1/chat/completions";
     
     const promptText = `
       Extract ALL TEXT from this image first. Then identify and extract ALL partner names and their tippable hours from the text.
@@ -58,73 +55,71 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
     `;
     
     const requestBody = {
-      contents: [
+      model: "gpt-4o-mini", // Much cheaper than gpt-4-vision-preview
+      messages: [
         {
-          parts: [
+          role: "user",
+          content: [
             {
+              type: "text",
               text: promptText
             },
             {
-              inline_data: {
-                mime_type: "image/jpeg",
-                data: imageBase64
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: "low" // Use low detail for even cheaper processing
               }
             }
           ]
         }
       ],
-      generationConfig: {
-        temperature: 0.2,
-        topP: 0.9,
-        topK: 40,
-        maxOutputTokens: 2048,
-      }
+      max_tokens: 1000,
+      temperature: 0.2
     };
     
-    const response = await fetch(`${apiUrl}?key=${apiKey}`, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage = "Failed to call Gemini API";
+      let errorMessage = "Failed to call OpenAI API";
       
       try {
-        const errorData = JSON.parse(errorText) as GeminiError;
+        const errorData = JSON.parse(errorText) as OpenAIError;
         if (errorData.error?.message) {
           errorMessage = errorData.error.message;
           // Hide the API key if it's in the error message
-          errorMessage = errorMessage.replace(/api_key:[a-zA-Z0-9-_]+/, "api_key:[REDACTED]");
+          errorMessage = errorMessage.replace(/sk-[a-zA-Z0-9-_]+/, "sk-[REDACTED]");
         }
       } catch (e) {
         // If error parsing fails, use the generic message
       }
       
-      console.error("Gemini API error:", response.status, errorText);
+      console.error("OpenAI API error:", response.status, errorText);
       return { 
         text: null, 
         error: `API Error (${response.status}): ${errorMessage}`
       };
     }
     
-    const data = await response.json() as GeminiResponse;
+    const data = await response.json() as OpenAIResponse;
     
-    if (!data.candidates || data.candidates.length === 0) {
-      console.error("No candidates in Gemini response");
+    if (!data.choices || data.choices.length === 0) {
+      console.error("No choices in OpenAI response");
       return { 
         text: null,
         error: "No text extracted from the image. Try a clearer image or manual entry."
       };
     }
     
-    const extractedText = data.candidates[0].content.parts
-      .map(part => part.text)
-      .filter(Boolean)
-      .join("\n");
+    const extractedText = data.choices[0].message.content;
     
     if (!extractedText) {
       return { 
@@ -135,7 +130,7 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
     
     return { text: extractedText };
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
+    console.error("Error calling OpenAI API:", error);
     return { 
       text: null,
       error: "An unexpected error occurred while processing the image."
